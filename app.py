@@ -1,42 +1,53 @@
-# Import all the necessary libraries
-import pandas as pd
-import numpy as np
-import joblib
-import pickle
 import streamlit as st
+import joblib
+import numpy as np
+import pandas as pd
+from utils.preprocessor import preprocess_input
 
-# Load the model and structure
-model = joblib.load("pollution_model.pkl")
-model_cols = joblib.load("model_columns.pkl")
+# Load model and scaler
+model = joblib.load('models/LR_model.pkl')
 
-# Let's create an User interface
-st.title("Water Pollutants Predictor")
-st.write("Predict the water pollutants based on Year and Station ID")
+scaler = joblib.load('models/scaler.pkl')
 
-# User inputs
-year_input = st.number_input("Enter Year", min_value=2000, max_value=2100, value=2022)
-station_id = st.text_input("Enter Station ID", value='1')
+st.title("Supply Chain Emissions Prediction")
 
-# To encode and then predict
-if st.button('Predict'):
-    if not station_id:
-        st.warning('Please enter the station ID')
-    else:
-        # Prepare the input
-        input_df = pd.DataFrame({'year': [year_input], 'id':[station_id]})
-        input_encoded = pd.get_dummies(input_df, columns=['id'])
+st.markdown("""
+This app predicts **Supply Chain Emission Factors with Margins** based on DQ metrics and other parameters.
+""")
 
-        # Align with model cols
-        for col in model_cols:
-            if col not in input_encoded.columns:
-                input_encoded[col] = 0
-        input_encoded = input_encoded[model_cols]
+# Input form
+with st.form("prediction_form"):
+    substance = st.selectbox("Substance", ['carbon dioxide', 'methane', 'nitrous oxide', 'other GHGs'])
+    unit = st.selectbox("Unit", ['kg/2018 USD, purchaser price', 'kg CO2e/2018 USD, purchaser price'])
+    source = st.selectbox("Source", ['Commodity', 'Industry'])
+    supply_wo_margin = st.number_input("Supply Chain Emission Factors without Margins", min_value=0.0)
+    margin = st.number_input("Margins of Supply Chain Emission Factors", min_value=0.0)
+    dq_reliability = st.slider("DQ Reliability", 0.0, 1.0)
+    dq_temporal = st.slider("DQ Temporal Correlation", 0.0, 1.0)
+    dq_geo = st.slider("DQ Geographical Correlation", 0.0, 1.0)
+    dq_tech = st.slider("DQ Technological Correlation", 0.0, 1.0)
+    dq_data = st.slider("DQ Data Collection", 0.0, 1.0)
+    # year = st.selectbox("Year", list(range(2010, 2017)))
 
-        # Predict
-        predicted_pollutants = model.predict(input_encoded)[0]
-        pollutants = ['O2', 'NO3', 'NO2', 'SO4', 'PO4', 'CL']
+    submit = st.form_submit_button("Predict")
 
-        st.subheader(f"Predicted pollutant levels for the station '{station_id}' in {year_input}:")
-        predicted_values = {}
-        for p, val in zip(pollutants, predicted_pollutants):
-            st.write(f'{p}:{val:.2f}')
+if submit:
+    input_data = {
+        'Substance': substance,
+        'Unit': unit,
+        'Supply Chain Emission Factors without Margins': supply_wo_margin,
+        'Margins of Supply Chain Emission Factors': margin,
+        'DQ ReliabilityScore of Factors without Margins': dq_reliability,
+        'DQ TemporalCorrelation of Factors without Margins': dq_temporal,
+        'DQ GeographicalCorrelation of Factors without Margins': dq_geo,
+        'DQ TechnologicalCorrelation of Factors without Margins': dq_tech,
+        'DQ DataCollection of Factors without Margins': dq_data,
+        'Source': source,
+        # 'Year': year
+    }
+
+    input_df = preprocess_input(pd.DataFrame([input_data]))
+    input_scaled = scaler.transform(input_df)
+    prediction = model.predict(input_scaled)
+
+    st.success(f"Predicted Supply Chain Emission Factor with Margin: **{prediction[0]:.4f}**")
